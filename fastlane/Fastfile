@@ -1,16 +1,20 @@
 default_platform(:android)
 
 platform :android do
-  desc "Build và deploy Android lên Firebase App Distribution"
+  desc "Clean, build và deploy Android lên Firebase App Distribution"
   lane :deploy_android do
-      # Giải mã file JSON từ biến môi trường
-      File.open("firebase_service_account.json", "w") do |f|
-        decoded = Base64.decode64(ENV["FIREBASE_SERVICE_ACCOUNT"])
-        f.write(decoded)
-      end
-    
-      # Build Flutter AAB (hoặc APK nếu cần)
+    UI.message("🧹 Dọn dẹp project Flutter trước khi build...")
+    sh("flutter", "clean")
+
+    UI.message("📦 Cài đặt lại dependencies...")
     sh("flutter", "pub", "get")
+
+    # Giải mã file JSON từ biến môi trường
+    UI.message("🔐 Giải mã service account JSON từ biến môi trường...")
+    File.open("firebase_service_account.json", "w") do |f|
+      decoded = Base64.decode64(ENV["FIREBASE_SERVICE_ACCOUNT"])
+      f.write(decoded)
+    end
 
     # Mặc định version code = 1
     build_number = 1
@@ -21,6 +25,7 @@ platform :android do
         app: ENV["YOUR_ANDROID_APP_ID"],
         service_credentials_file: "fastlane/firebase_service_account.json"
       )
+
       if latest_release && latest_release[:buildVersion]
         build_number = latest_release[:buildVersion].to_i + 1
         UI.message("✅ Phát hiện release trước đó, build number mới: #{build_number}")
@@ -31,10 +36,10 @@ platform :android do
       UI.message("⚠️ Không thể lấy latest release (#{e.message}), build với version mặc định: #{build_number}")
     end
 
-    # Build APK với version number
+    UI.message("🏗️ Bắt đầu build APK với build number #{build_number}...")
     sh("flutter", "build", "apk", "--build-number=#{build_number}", "--release")
 
-    # Upload lên Firebase App Distribution
+    UI.message("🚀 Upload lên Firebase App Distribution...")
     firebase_app_distribution(
       app: ENV["YOUR_ANDROID_APP_ID"],
       service_credentials_file: "fastlane/firebase_service_account.json",
@@ -42,5 +47,7 @@ platform :android do
       groups: "qa-team, dev-team",
       release_notes: "New build from Bitbucket Pipeline (build #{build_number})"
     )
+
+    UI.success("🎉 Deploy thành công lên Firebase App Distribution!")
   end
 end
