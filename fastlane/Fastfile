@@ -1,0 +1,46 @@
+default_platform(:android)
+
+platform :android do
+  desc "Build và deploy Android lên Firebase App Distribution"
+  lane :deploy_android do
+      # Giải mã file JSON từ biến môi trường
+      File.open("firebase_service_account.json", "w") do |f|
+        decoded = Base64.decode64(ENV["FIREBASE_SERVICE_ACCOUNT"])
+        f.write(decoded)
+      end
+    
+      # Build Flutter AAB (hoặc APK nếu cần)
+    sh("flutter", "pub", "get")
+
+    # Mặc định version code = 1
+    build_number = 1
+
+    begin
+      UI.message("🔍 Đang lấy thông tin release mới nhất từ Firebase App Distribution...")
+      latest_release = firebase_app_distribution_get_latest_release(
+        app: ENV["YOUR_ANDROID_APP_ID"],
+        service_credentials_file: "fastlane/firebase_service_account.json"
+      )
+      if latest_release && latest_release[:buildVersion]
+        build_number = latest_release[:buildVersion].to_i + 1
+        UI.message("✅ Phát hiện release trước đó, build number mới: #{build_number}")
+      else
+        UI.message("⚠️ Không tìm thấy release trước đó, dùng version mặc định: #{build_number}")
+      end
+    rescue => e
+      UI.message("⚠️ Không thể lấy latest release (#{e.message}), build với version mặc định: #{build_number}")
+    end
+
+    # Build APK với version number
+    sh("flutter", "build", "apk", "--build-number=#{build_number}", "--release")
+
+    # Upload lên Firebase App Distribution
+    firebase_app_distribution(
+      app: ENV["YOUR_ANDROID_APP_ID"],
+      service_credentials_file: "fastlane/firebase_service_account.json",
+      android_artifact_path: "build/app/outputs/flutter-apk/app-release.apk",
+      groups: "qa-team, dev-team",
+      release_notes: "New build from Bitbucket Pipeline (build #{build_number})"
+    )
+  end
+end
